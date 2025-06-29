@@ -1,3 +1,6 @@
+// ===== 版本标识 =====
+console.log('🚀 script.js 已加载 - 版本 2.0');
+
 // 全局变量
 let ws;
 let currentUser = '';
@@ -206,9 +209,28 @@ function handleServerMessage(message) {
         case 'IMAGE_MESSAGE':
             handleImageMessage(parts[1], parts[2], parts[3], parts[4], parts[5]);
             break;
+        case 'IMAGE_UPLOAD_FAILED':
+            console.error('[图片上传] 失败:', parts[1]);
+            showNotification('图片上传失败: ' + (parts[1] || '未知错误'), 'error');
+            break;
         case 'SUBGROUP_INVITE':
             console.log('收到SUBGROUP_INVITE消息:', parts);
             handleSubgroupInvite(parts[1], parts[2], parts[3]);
+            break;
+        case 'SUBGROUP_LEFT':
+            showNotification('已退出小组: ' + parts[1], 'success');
+            break;
+        case 'SUBGROUP_LEAVE_FAILED':
+            showNotification('退出失败: ' + parts[1], 'error');
+            break;
+        case 'SUBGROUP_DELETED':
+            showNotification('小组已删除: ' + parts[1], 'success');
+            break;
+        case 'SUBGROUP_DELETE_FAILED':
+            showNotification('删除失败: ' + parts[1], 'error');
+            break;
+        case 'SUBGROUP_DELETED_NOTIFICATION':
+            showNotification('小组 "' + parts[1] + '" 已被 ' + parts[2] + ' 删除', 'info');
             break;
         case 'GROUP_MEMBERS':
             handleGroupMembers(parts[1], JSON.parse(parts[2]));
@@ -297,6 +319,7 @@ function handleKicked(reason) {
 
 // 更新用户列表
 function updateUserList(users) {
+    console.log('[调试] updateUserList接收到的users:', users);
     userList = users;
     const usersList = document.getElementById('usersList');
     const onlineCount = document.getElementById('onlineCount');
@@ -305,6 +328,7 @@ function updateUserList(users) {
     onlineCount.textContent = users.length;
     
     users.forEach(user => {
+        console.log('[调试] 处理用户:', user);
         if (user !== currentUser) {
             const userItem = createUserItem(user);
             usersList.appendChild(userItem);
@@ -312,8 +336,28 @@ function updateUserList(users) {
     });
 }
 
+// 添加用户到列表
+function addUserToList(username) {
+    if (!userList.includes(username)) {
+        userList.push(username);
+        updateUserList(userList);
+        console.log('用户加入:', username);
+    }
+}
+
+// 从列表中移除用户
+function removeUserFromList(username) {
+    const index = userList.indexOf(username);
+    if (index > -1) {
+        userList.splice(index, 1);
+        updateUserList(userList);
+        console.log('用户离开:', username);
+    }
+}
+
 // 创建用户列表项
 function createUserItem(username) {
+    console.log('[调试] createUserItem接收到的username:', username);
     const div = document.createElement('div');
     div.className = 'list-item';
     div.dataset.user = username;
@@ -329,7 +373,9 @@ function createUserItem(username) {
         ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount}</span>` : ''}
     `;
     
-    div.onclick = () => openChat(`USER_${username}`);
+    const targetChat = `USER_${username}`;
+    console.log('[调试] createUserItem将设置点击事件，target:', targetChat);
+    div.onclick = () => openChat(targetChat);
     return div;
 }
 
@@ -420,15 +466,29 @@ function createSubgroupItem(subgroup) {
             <div class="user-name">${subgroup.name} (${subgroup.parentGroup})</div>
         </div>
         ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount}</span>` : ''}
+        <div class="subgroup-actions">
+            <button class="btn-icon btn-small action-btn" onclick="leaveSubgroup('${subgroup.name}', event)" title="退出小组">
+                <i class="fas fa-sign-out-alt"></i>
+            </button>
+            <button class="btn-icon btn-small action-btn delete-btn" onclick="deleteSubgroup('${subgroup.name}', event)" title="删除小组">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+        </div>
     `;
     
-    div.onclick = () => openChat(`SUBGROUP_${subgroup.name}`);
+    div.onclick = (e) => {
+        // 避免点击操作按钮时也触发打开聊天
+        if (e.target.closest('.subgroup-actions')) return;
+        openChat(`SUBGROUP_${subgroup.name}`);
+    };
     return div;
 }
 
 // 打开聊天
 function openChat(target) {
+    console.log('[调试] openChat接收到的原始target:', target);
     target = normalizeTarget(target);
+    console.log('[调试] openChat经过normalizeTarget后的target:', target);
     // 隐藏欢迎界面
     const welcomeScreen = document.getElementById('welcomeScreen');
     if (welcomeScreen) {
@@ -469,7 +529,9 @@ function openChat(target) {
 
 // 加载聊天历史消息
 function loadChatHistory(target) {
+    console.log('[调试] loadChatHistory接收到的target:', target);
     const targetName = target.replace(/^(USER_|GROUP_|SUBGROUP_)/, '');
+    console.log('[调试] 提取的targetName:', targetName);
     let chatType;
     
     if (target.startsWith('USER_')) {
@@ -481,8 +543,10 @@ function loadChatHistory(target) {
     }
     
     if (chatType) {
-        console.log('请求历史消息:', { targetName, chatType });
-        sendMessage(`GET_MESSAGES|${targetName}|${chatType}`);
+        // 确保targetName是小写的（针对用户名）
+        const finalTargetName = chatType === 'PRIVATE' ? targetName.toLowerCase() : targetName;
+        console.log('请求历史消息:', { targetName: finalTargetName, chatType });
+        sendMessage(`GET_MESSAGES|${finalTargetName}|${chatType}`);
     }
 }
 
@@ -575,6 +639,7 @@ function autoResizeTextarea(textarea) {
 
 // 发送消息到聊天
 function sendMessageToChat(target) {
+    console.log('[调试] sendMessageToChat接收到的target:', target);
     if (pendingUpload) {
         sendPendingUpload();
         return;
@@ -583,10 +648,18 @@ function sendMessageToChat(target) {
     const message = input.value.trim();
     if (!message) return;
     const targetName = target.replace(/^(USER_|GROUP_|SUBGROUP_)/, '');
+    console.log('[调试] sendMessageToChat提取的targetName:', targetName);
     const targetType = target.startsWith('USER_') ? 'PRIVATE' : 
                       target.startsWith('GROUP_') ? 'GROUP' : 'SUBGROUP';
+    
+    // 确保targetName是小写的（针对用户名）
+    const finalTargetName = targetType === 'PRIVATE' ? targetName.toLowerCase() : targetName;
+    console.log('[调试] 最终的targetName:', finalTargetName);
+    
     // 发送消息到服务器
-    sendMessage(`${targetType}_MESSAGE|${targetName}|${message}`);
+    const messageToSend = `${targetType}_MESSAGE|${finalTargetName}|${message}`;
+    console.log('[调试] 准备发送的消息:', messageToSend);
+    sendMessage(messageToSend);
     // 清空输入框
     input.value = '';
     input.style.height = 'auto';
@@ -1006,16 +1079,81 @@ function showFileUploadModal() {
     input.click();
 }
 
-// 修改 showImageUploadModal 只选择图片
+// 修改 showImageUploadModal 只选择图片 - 使用WebSocket JSON上传
 function showImageUploadModal() {
+    // 添加明显的调试提示
+    alert('图片上传函数被调用！');
+    console.log('[图片上传] showImageUploadModal 被调用');
+    console.log('[图片上传] 当前聊天:', currentChat);
+    console.log('[图片上传] WebSocket状态:', ws ? ws.readyState : 'null');
+    
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/*';
     input.onchange = (e) => {
+        alert('文件选择事件触发！');
+        console.log('[图片上传] 文件选择事件触发');
         const file = e.target.files[0];
-        if (!file) return;
-        pendingUpload = { type: 'image', file };
-        renderPendingUpload();
+        if (!file) {
+            alert('没有选择文件');
+            console.log('[图片上传] 没有选择文件');
+            return;
+        }
+        alert('选择了文件: ' + file.name);
+        console.log('[图片上传] 选择文件:', file.name, '大小:', file.size);
+        
+        if (!currentChat) {
+            showNotification('请先选择一个聊天', 'error');
+            return;
+        }
+        
+        if (file.size > 5 * 1024 * 1024) {
+            showNotification('图片大小不能超过5MB', 'error');
+            return;
+        }
+        
+        // 显示上传提示
+        showNotification('正在上传图片...', 'info');
+        
+        // 直接处理图片上传，使用WebSocket JSON
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            alert('文件读取完成，准备发送到服务器');
+            let base64Data = e.target.result;
+            if (typeof base64Data === 'string' && base64Data.includes(',')) {
+                base64Data = base64Data.split(',')[1];
+            }
+            if (!base64Data || /[^A-Za-z0-9+/=]/.test(base64Data)) {
+                showNotification('图片编码异常，上传失败', 'error');
+                return;
+            }
+            
+            const targetName = currentChat.replace(/^(USER_|GROUP_|SUBGROUP_)/, '');
+            const chatType = currentChat.startsWith('USER_') ? 'PRIVATE' :
+                currentChat.startsWith('GROUP_') ? 'GROUP' : 'SUBGROUP';
+            
+            // 确保targetName是小写的（针对用户名）
+            const finalTargetName = chatType === 'PRIVATE' ? targetName.toLowerCase() : targetName;
+            
+            const message = {
+                type: 'IMAGE_UPLOAD',
+                target: finalTargetName,
+                chatType: chatType,
+                fileName: file.name,
+                fileSize: file.size,
+                fileType: file.type,
+                data: base64Data
+            };
+            
+            alert('准备发送WebSocket消息: ' + JSON.stringify({type: message.type, target: message.target, chatType: message.chatType, fileName: message.fileName}));
+            console.log('[图片上传] 发送WebSocket消息:', message);
+            ensureWsReady(() => {
+                ws.send(JSON.stringify(message));
+                alert('WebSocket消息已发送！');
+                console.log('[图片上传] WebSocket消息已发送');
+            });
+        };
+        reader.readAsDataURL(file);
     };
     input.click();
 }
@@ -1124,52 +1262,6 @@ async function uploadFile(file) {
     if (!resp.ok) throw new Error('上传失败');
     return await resp.json(); // {url, fileName, fileSize}
 }
-
-// 图片选择事件处理
-// 修改图片选择事件处理
-document.getElementById('imageInput').addEventListener('change', function(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    console.log('[图片上传] 选择文件:', file.name, '大小:', file.size);
-    if (!currentChat) {
-        showNotification('请先选择一个聊天', 'error');
-        return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-        showNotification('图片大小不能超过5MB', 'error');
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        let base64Data = e.target.result;
-        if (typeof base64Data === 'string' && base64Data.includes(',')) {
-            base64Data = base64Data.split(',')[1];
-        }
-        if (!base64Data || /[^A-Za-z0-9+/=]/.test(base64Data)) {
-            showNotification('图片编码异常，上传失败', 'error');
-            return;
-        }
-        const targetName = currentChat.replace(/^(USER_|GROUP_|SUBGROUP_)/, '');
-        const chatType = currentChat.startsWith('USER_') ? 'PRIVATE' :
-            currentChat.startsWith('GROUP_') ? 'GROUP' : 'SUBGROUP';
-        const message = {
-            type: 'IMAGE_UPLOAD',
-            target: targetName,
-            chatType: chatType,
-            fileName: file.name,
-            fileSize: file.size,
-            fileType: file.type,
-            data: base64Data
-        };
-        console.log('[图片上传] 发送消息:', message);
-        ensureWsReady(() => {
-            ws.send(JSON.stringify(message));
-            console.log('[图片上传] 已通过 WebSocket 发送');
-        });
-    };
-    reader.readAsDataURL(file);
-    event.target.value = '';
-});
 
 // 存储当前的小组邀请信息
 let currentSubgroupInvite = null;
@@ -1643,6 +1735,35 @@ function closeGroupInviteModal() {
     }
 }
 
+// 退出小组
+function leaveSubgroup(subgroupName, event) {
+    event.stopPropagation();
+    
+    if (confirm(`确定要退出小组 "${subgroupName}" 吗？`)) {
+        console.log('退出小组:', subgroupName);
+        sendMessage(`LEAVE_SUBGROUP|${subgroupName}`);
+    }
+}
+
+// 删除小组
+function deleteSubgroup(subgroupName, event) {
+    event.stopPropagation();
+    
+    const confirmMessage = `⚠️ 警告：删除小组将会：
+    
+• 解散整个小组
+• 删除所有聊天记录
+• 移除所有成员
+• 此操作不可撤销
+
+确定要删除小组 "${subgroupName}" 吗？`;
+    
+    if (confirm(confirmMessage)) {
+        console.log('删除小组:', subgroupName);
+        sendMessage(`DELETE_SUBGROUP|${subgroupName}`);
+    }
+}
+
 // 检查保存的登录状态
 function checkSavedLogin() {
     // 如果是测试模式，不自动填充登录信息
@@ -1784,18 +1905,21 @@ function clearSavedLogin() {
 
 // 工具函数，统一 target key 格式
 function normalizeTarget(target) {
-    if (target.startsWith('USER_') || target.startsWith('GROUP_') || target.startsWith('SUBGROUP_')) {
-        return target.toUpperCase();
-    }
+    // 移除不必要的大小写转换，保持原始格式
     return target;
 }
 
 // 上传文件和图片时自动重连
 function ensureWsReady(callback) {
+    console.log('[WebSocket] 检查连接状态:', ws ? ws.readyState : 'null');
+    console.log('[WebSocket] 状态码含义: 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED');
+    
     if (ws && ws.readyState === WebSocket.OPEN) {
+        console.log('[WebSocket] 连接正常，执行回调');
         callback();
     } else {
-        showNotification('连接未就绪，请刷新页面重新登录', 'error');
+        console.error('[WebSocket] 连接未就绪，当前状态:', ws ? ws.readyState : 'null');
+        showNotification('WebSocket连接未就绪，请刷新页面重新登录', 'error');
     }
 }
 
@@ -1810,4 +1934,17 @@ function renderMessage(message) {
         }
     }
     // ... 其他类型处理 ...
+}
+
+// 测试函数 - 用于调试图片上传功能
+function testImageUpload() {
+    alert('测试按钮被点击了！');
+    console.log('测试按钮被点击，准备调用showImageUploadModal...');
+    
+    try {
+        showImageUploadModal();
+    } catch (error) {
+        alert('调用showImageUploadModal出错: ' + error.message);
+        console.error('调用showImageUploadModal出错:', error);
+    }
 }

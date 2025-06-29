@@ -62,6 +62,9 @@ public class ChatServer {
             this.clientSocket = socket;
         }
 
+        // WebSocket 数据缓冲区
+        private ByteArrayOutputStream dataBuffer = new ByteArrayOutputStream();
+        
         @Override
         public void run() {
             try {
@@ -72,20 +75,26 @@ public class ChatServer {
                 int bytesRead;
 
                 while ((bytesRead = in.read(buffer)) != -1) {
-                    String message;
                     if (isWebSocket) {
-                        message = parseWebSocketFrame(Arrays.copyOf(buffer, bytesRead));
+                        // 将读取的数据添加到缓冲区
+                        dataBuffer.write(buffer, 0, bytesRead);
+                        
+                        // 尝试解析缓冲区中的所有完整帧
+                        parseAllWebSocketFrames();
                     } else {
-                        message = new String(buffer, 0, bytesRead, StandardCharsets.UTF_8);
+                        String message = new String(buffer, 0, bytesRead, StandardCharsets.UTF_8);
                         if (message.startsWith("GET / HTTP/1.1")) {
                             handleWebSocketHandshake(message);
                             continue;
+                        } else if (message.startsWith("GET /files/")) {
+                            handleFileRequest(message);
+                            continue;
+                        } else {
+                            if (message != null && !message.trim().isEmpty()) {
+                                System.out.println("收到消息: " + message);
+                                handleMessage(message);
+                            }
                         }
-                    }
-
-                    if (message != null && !message.trim().isEmpty()) {
-                        System.out.println("收到消息: " + message);
-                        handleMessage(message);
                     }
                 }
             } catch (IOException e) {
@@ -94,20 +103,105 @@ public class ChatServer {
                 cleanup();
             }
         }
+        
+        // 解析缓冲区中的所有完整WebSocket帧
+        private void parseAllWebSocketFrames() {
+            try {
+                byte[] data = dataBuffer.toByteArray();
+                int offset = 0;
+                
+                while (offset < data.length) {
+                    // 尝试解析一个完整的帧
+                    int frameSize = getWebSocketFrameSize(data, offset);
+                    if (frameSize == -1) {
+                        // 不完整的帧，等待更多数据
+                        break;
+                    }
+                    
+                    // 提取完整的帧
+                    byte[] frame = Arrays.copyOfRange(data, offset, offset + frameSize);
+                    String message = parseWebSocketFrame(frame);
+                    
+                    if (message != null && !message.trim().isEmpty()) {
+                        System.out.println("收到消息: " + message);
+                        handleMessage(message);
+                    }
+                    
+                    offset += frameSize;
+                }
+                
+                // 移除已处理的数据，保留未处理的部分
+                if (offset > 0) {
+                    byte[] remaining = Arrays.copyOfRange(data, offset, data.length);
+                    dataBuffer.reset();
+                    if (remaining.length > 0) {
+                        dataBuffer.write(remaining);
+                    }
+                }
+            } catch (IOException e) {
+                System.err.println("解析WebSocket帧失败: " + e.getMessage());
+            }
+        }
+        
+        // 计算WebSocket帧的总大小
+        private int getWebSocketFrameSize(byte[] data, int offset) {
+            if (data.length < offset + 2) {
+                return -1; // 数据不足
+            }
+            
+            int payloadLength = data[offset + 1] & 0x7F;
+            boolean masked = (data[offset + 1] & 0x80) != 0;
+            int headerSize = 2;
+            
+            if (payloadLength == 126) {
+                if (data.length < offset + 4) return -1;
+                payloadLength = ((data[offset + 2] & 0xFF) << 8) | (data[offset + 3] & 0xFF);
+                headerSize = 4;
+            } else if (payloadLength == 127) {
+                if (data.length < offset + 10) return -1;
+                long longLength = 0;
+                for (int i = 0; i < 8; i++) {
+                    longLength = (longLength << 8) | (data[offset + 2 + i] & 0xFF);
+                }
+                if (longLength > Integer.MAX_VALUE) return -1;
+                payloadLength = (int) longLength;
+                headerSize = 10;
+            }
+            
+            if (masked) {
+                headerSize += 4; // 掩码
+            }
+            
+            int totalSize = headerSize + payloadLength;
+            if (data.length < offset + totalSize) {
+                return -1; // 数据不完整
+            }
+            
+            return totalSize;
+        }
 
         private void handleMessage(String message) {
             try {
+                System.out.println("[消息调试] 收到消息长度: " + message.length() + " 字符");
+                System.out.println("[消息调试] 消息前50字符: " + message.substring(0, Math.min(50, message.length())));
+                
                 // 尝试解析JSON消息（图片上传）
                 if (message.startsWith("{") && message.endsWith("}")) {
+                    System.out.println("[消息调试] 识别为JSON消息，尝试解析...");
                     JsonObject json = gson.fromJson(message, JsonObject.class);
                     if (json.has("type") && "IMAGE_UPLOAD".equals(json.get("type").getAsString())) {
+                        System.out.println("[消息调试] 识别为IMAGE_UPLOAD消息");
                         handleImageUpload(json);
                         return;
                     }
                     if (json.has("type") && "FILE_UPLOAD".equals(json.get("type").getAsString())) {
+                        System.out.println("[消息调试] 识别为FILE_UPLOAD消息");
                         handleFileUpload(json);
                         return;
                     }
+                    System.out.println("[消息调试] JSON消息类型未识别: " + (json.has("type") ? json.get("type").getAsString() : "无type字段"));
+                } else {
+                    System.out.println("[消息调试] 识别为普通文本消息");
                 }
 
                 String[] parts = message.split("\\|");
@@ -187,6 +281,16 @@ public class ChatServer {
                     case "GET_SUBGROUP_INVITABLE_USERS":
                         if (parts.length >= 3) {
                             handleGetSubgroupInvitableUsers(parts[1], parts[2]);
+                        }
+                        break;
+                    case "LEAVE_SUBGROUP":
+                        if (parts.length >= 2) {
+                            handleLeaveSubgroup(parts[1]);
+                        }
+                        break;
+                    case "DELETE_SUBGROUP":
+                        if (parts.length >= 2) {
+                            handleDeleteSubgroup(parts[1]);
                         }
                         break;
                     default:
@@ -367,6 +471,46 @@ public class ChatServer {
             }
         }
         
+        // 退出小组
+        private void handleLeaveSubgroup(String subgroupName) {
+            if (currentUser == null) return;
+            
+            if (groupManager.leaveSubgroup(subgroupName, currentUser.getUsername())) {
+                // 广播小组列表更新给所有在线用户
+                broadcastSubgroupListToAll();
+                sendMessage("SUBGROUP_LEFT|" + subgroupName);
+                System.out.println("用户 " + currentUser.getUsername() + " 退出了小组 " + subgroupName);
+            } else {
+                sendMessage("SUBGROUP_LEAVE_FAILED|退出失败，创建者不能退出小组");
+            }
+        }
+        
+        // 删除小组
+        private void handleDeleteSubgroup(String subgroupName) {
+            if (currentUser == null) return;
+            
+            if (groupManager.deleteSubgroup(subgroupName, currentUser.getUsername())) {
+                // 广播小组列表更新给所有在线用户
+                broadcastSubgroupListToAll();
+                sendMessage("SUBGROUP_DELETED|" + subgroupName);
+                
+                // 通知所有小组成员
+                List<String> members = groupManager.getSubgroupMembers(subgroupName);
+                for (String member : members) {
+                    if (!member.equals(currentUser.getUsername())) {
+                        ClientHandler memberClient = getClientByUsername(member);
+                        if (memberClient != null) {
+                            memberClient.sendMessage("SUBGROUP_DELETED_NOTIFICATION|" + subgroupName + "|" + currentUser.getUsername());
+                        }
+                    }
+                }
+                
+                System.out.println("小组 " + subgroupName + " 已被创建者 " + currentUser.getUsername() + " 删除");
+            } else {
+                sendMessage("SUBGROUP_DELETE_FAILED|删除失败，只有创建者可以删除小组");
+            }
+        }
+        
         // 获取群组成员
         private void handleGetGroupMembers(String groupName) {
             if (currentUser == null) return;
@@ -522,13 +666,24 @@ public class ChatServer {
         
         // 私聊消息处理
         private void handlePrivateMessage(String target, String content) {
-            if (currentUser == null) return;
+            System.out.println("[调试] handlePrivateMessage: target=" + target + ", content=" + content + ", currentUser=" + (currentUser != null ? currentUser.getUsername() : "null"));
+            
+            if (currentUser == null) {
+                System.out.println("[错误] currentUser 为 null，无法处理私聊消息");
+                return;
+            }
+            
             // 检查目标用户是否在线
             ClientHandler targetClient = getClientByUsername(target);
+            System.out.println("[调试] 查找目标用户 " + target + " 结果: " + (targetClient != null ? "找到" : "未找到"));
+            System.out.println("[调试] 当前在线用户列表: " + onlineClients.keySet());
+            
             if (targetClient == null) {
+                System.out.println("[错误] 目标用户 " + target + " 不在线");
                 sendMessage("PRIVATE_MESSAGE_FAILED|用户不在线");
                 return;
             }
+            
             // 创建消息
             Message message = new Message();
             message.setSender(currentUser.getUsername());
@@ -536,26 +691,29 @@ public class ChatServer {
             message.setType(Message.MessageType.PRIVATE);
             message.setTarget(target);
             message.setTimestamp(System.currentTimeMillis());
+            
             String messageStr;
             if (content.startsWith("IMAGE:")) {
                 String fileUrl = content.substring(6);
                 message.setFileType("image");
                 message.setFileName(fileUrl.substring(fileUrl.lastIndexOf("/") + 1));
                 messageManager.saveMessage(message);
-                messageStr = "IMAGE_MESSAGE|" + target + "|" + currentUser.getUsername() + "|" + fileUrl + "||" + message.getTimestamp();
+                messageStr = "IMAGE_MESSAGE|USER_" + target + "|" + currentUser.getUsername() + "|" + fileUrl + "||" + message.getTimestamp();
             } else if (content.startsWith("FILE:")) {
                 String fileUrl = content.substring(5);
                 message.setFileType("file");
                 message.setFileName(fileUrl.substring(fileUrl.lastIndexOf("/") + 1));
                 messageManager.saveMessage(message);
-                messageStr = "FILE_MESSAGE|" + target + "|" + currentUser.getUsername() + "|" + fileUrl + "|" + message.getFileName() + "||" + message.getTimestamp();
+                messageStr = "FILE_MESSAGE|USER_" + target + "|" + currentUser.getUsername() + "|" + fileUrl + "|" + message.getFileName() + "||" + message.getTimestamp();
             } else {
                 messageManager.saveMessage(message);
                 messageStr = "PRIVATE_MESSAGE|" + currentUser.getUsername() + "|" + content + "|" + message.getTimestamp();
             }
+            
             // 发送给目标用户
+            System.out.println("[调试] 准备发送消息给目标用户: " + messageStr);
             targetClient.sendMessage(messageStr);
-            System.out.println("私聊消息: " + currentUser.getUsername() + " -> " + target + ": " + content);
+            System.out.println("私聊消息发送成功: " + currentUser.getUsername() + " -> " + target + ": " + content);
         }
         
         // 获取消息历史
@@ -820,6 +978,15 @@ public class ChatServer {
 
         private ByteArrayOutputStream fragmentBuffer = new ByteArrayOutputStream();
         private boolean isBinaryFrame = false;
+        
+        // 辅助方法：字节数组转十六进制字符串
+        private String bytesToHex(byte[] bytes) {
+            StringBuilder result = new StringBuilder();
+            for (byte b : bytes) {
+                result.append(String.format("%02X ", b));
+            }
+            return result.toString().trim();
+        }
 
         // 解析WebSocket帧
         private String parseWebSocketFrame(byte[] frame) throws IOException {
@@ -833,6 +1000,11 @@ public class ChatServer {
             int opcode = frame[0] & 0x0F;
             boolean masked = (frame[1] & 0x80) != 0;
             int payloadLength = frame[1] & 0x7F;
+            
+            // 添加详细调试信息
+            System.out.println("[WebSocket调试] 帧长度: " + frame.length + " bytes");
+            System.out.println("[WebSocket调试] 前8字节(十六进制): " + bytesToHex(Arrays.copyOf(frame, Math.min(8, frame.length))));
+            System.out.println("[WebSocket调试] FIN: " + fin + ", opcode: " + opcode + ", masked: " + masked + ", payloadLength: " + payloadLength);
 
             // 处理操作码
             if (opcode == 0x8) { // 关闭帧
@@ -853,14 +1025,29 @@ public class ChatServer {
             // 处理负载长度
             int offset = 2;
             if (payloadLength == 126) {
+                if (frame.length < offset + 2) {
+                    System.err.println("[错误] 帧长度不足以读取扩展长度(126)");
+                    return null;
+                }
                 payloadLength = ((frame[offset] & 0xFF) << 8) | (frame[offset+1] & 0xFF);
                 offset += 2;
+                System.out.println("[WebSocket调试] 扩展长度(126): " + payloadLength);
             } else if (payloadLength == 127) {
-                payloadLength = 0;
-                for (int i = 0; i < 8; i++) {
-                    payloadLength = (payloadLength << 8) | (frame[offset+i] & 0xFF);
+                if (frame.length < offset + 8) {
+                    System.err.println("[错误] 帧长度不足以读取扩展长度(127)");
+                    return null;
                 }
+                long longLength = 0;
+                for (int i = 0; i < 8; i++) {
+                    longLength = (longLength << 8) | (frame[offset+i] & 0xFF);
+                }
+                if (longLength > Integer.MAX_VALUE) {
+                    System.err.println("[错误] 消息长度过大: " + longLength);
+                    return null;
+                }
+                payloadLength = (int) longLength;
                 offset += 8;
+                System.out.println("[WebSocket调试] 扩展长度(127): " + payloadLength);
             }
 
             // 处理掩码
@@ -872,8 +1059,10 @@ public class ChatServer {
             }
 
             // 检查数据完整性
-            if (frame.length < offset + payloadLength) {
-                System.err.println("[警告] 不完整帧，等待后续数据");
+            int totalFrameSize = offset + payloadLength;
+            if (frame.length < totalFrameSize) {
+                System.err.println("[警告] 不完整帧，需要 " + totalFrameSize + " 字节，但只有 " + frame.length + " 字节");
+                System.err.println("[警告] offset: " + offset + ", payloadLength: " + payloadLength);
                 // 可以设置一个超时机制，避免长时间等待
                 return null;
             }
@@ -1001,8 +1190,13 @@ public class ChatServer {
         }
 
         private void handleImageUpload(JsonObject message) {
+            System.out.println("=== [IMAGE_UPLOAD] 开始处理图片上传请求 ===");
+            System.out.println("[IMAGE_UPLOAD] 当前用户: " + (currentUser != null ? currentUser.getUsername() : "null"));
+            System.out.println("[IMAGE_UPLOAD] 收到的JSON消息大小: " + message.toString().length() + " 字符");
+            
             try {
                 if (currentUser == null) {
+                    System.out.println("[IMAGE_UPLOAD] 错误：用户未登录");
                     sendMessage("IMAGE_UPLOAD_FAILED|未登录用户不能上传图片");
                     return;
                 }
@@ -1013,6 +1207,15 @@ public class ChatServer {
                 long fileSize = message.get("fileSize").getAsLong();
                 String fileType = message.get("fileType").getAsString();
                 String base64Data = message.get("data").getAsString();
+                
+                System.out.println("[IMAGE_UPLOAD] 解析参数:");
+                System.out.println("  - target: " + target);
+                System.out.println("  - chatType: " + chatType);
+                System.out.println("  - fileName: " + fileName);
+                System.out.println("  - fileSize: " + fileSize + " bytes");
+                System.out.println("  - fileType: " + fileType);
+                System.out.println("  - base64Data长度: " + base64Data.length() + " 字符");
+                
                 // 防御性去除前缀
                 if (base64Data.contains(",")) {
                     base64Data = base64Data.substring(base64Data.indexOf(",") + 1);
@@ -1226,6 +1429,106 @@ public class ChatServer {
             } catch (Exception e) {
                 System.err.println("处理文件上传时出错: " + e.getMessage());
                 sendMessage("FILE_UPLOAD_FAILED|文件处理失败: " + e.getMessage());
+            }
+        }
+
+        /**
+         * 处理文件下载请求（为本地存储的图片提供HTTP访问）
+         */
+        private void handleFileRequest(String request) {
+            try {
+                // 解析请求路径
+                String[] lines = request.split("\r\n");
+                String requestLine = lines[0];
+                String[] parts = requestLine.split(" ");
+                String path = parts[1]; // 例如: /files/chat_images/upload_123456_image.jpg
+                
+                // 移除 /files/ 前缀并进行URL解码
+                String encodedFilePath = path.substring(7); // 移除 "/files/"
+                String filePath = java.net.URLDecoder.decode(encodedFilePath, "UTF-8");
+                
+                System.out.println("[文件请求] 原始路径: " + path);
+                System.out.println("[文件请求] 编码路径: " + encodedFilePath);
+                System.out.println("[文件请求] 解码路径: " + filePath);
+                
+                File file = new File("files", filePath);
+                
+                if (file.exists() && file.isFile()) {
+                    // 获取文件扩展名，确定MIME类型
+                    String mimeType = getMimeType(file.getName());
+                    
+                    // 发送HTTP响应头
+                    String headers = "HTTP/1.1 200 OK\r\n" +
+                                   "Content-Type: " + mimeType + "\r\n" +
+                                   "Content-Length: " + file.length() + "\r\n" +
+                                   "Cache-Control: public, max-age=3600\r\n" +
+                                   "Access-Control-Allow-Origin: *\r\n" +
+                                   "\r\n";
+                    
+                    out.write(headers.getBytes(StandardCharsets.UTF_8));
+                    
+                    // 发送文件内容
+                    try (FileInputStream fis = new FileInputStream(file)) {
+                        byte[] buffer = new byte[8192];
+                        int bytesRead;
+                        while ((bytesRead = fis.read(buffer)) != -1) {
+                            out.write(buffer, 0, bytesRead);
+                        }
+                    }
+                    out.flush();
+                    
+                    System.out.println("✅ 文件服务: " + path);
+                } else {
+                    // 文件不存在，返回404
+                    String response = "HTTP/1.1 404 Not Found\r\n" +
+                                    "Content-Type: text/plain\r\n" +
+                                    "Content-Length: 13\r\n" +
+                                    "\r\n" +
+                                    "File not found";
+                    out.write(response.getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                    
+                    System.out.println("❌ 文件不存在: " + path);
+                }
+            } catch (Exception e) {
+                System.err.println("处理文件请求时出错: " + e.getMessage());
+                try {
+                    String response = "HTTP/1.1 500 Internal Server Error\r\n" +
+                                    "Content-Type: text/plain\r\n" +
+                                    "Content-Length: 21\r\n" +
+                                    "\r\n" +
+                                    "Internal Server Error";
+                    out.write(response.getBytes(StandardCharsets.UTF_8));
+                    out.flush();
+                } catch (IOException ex) {
+                    System.err.println("发送错误响应失败: " + ex.getMessage());
+                }
+            }
+        }
+
+        /**
+         * 根据文件扩展名获取MIME类型
+         */
+        private String getMimeType(String fileName) {
+            String extension = fileName.toLowerCase();
+            if (extension.endsWith(".jpg") || extension.endsWith(".jpeg")) {
+                return "image/jpeg";
+            } else if (extension.endsWith(".png")) {
+                return "image/png";
+            } else if (extension.endsWith(".gif")) {
+                return "image/gif";
+            } else if (extension.endsWith(".bmp")) {
+                return "image/bmp";
+            } else if (extension.endsWith(".webp")) {
+                return "image/webp";
+            } else if (extension.endsWith(".pdf")) {
+                return "application/pdf";
+            } else if (extension.endsWith(".txt")) {
+                return "text/plain";
+            } else if (extension.endsWith(".zip")) {
+                return "application/zip";
+            } else {
+                return "application/octet-stream";
             }
         }
     }

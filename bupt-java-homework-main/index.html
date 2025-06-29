@@ -25,12 +25,19 @@
                     <i class="fas fa-lock"></i>
                     <input type="password" id="password" placeholder="密码" required>
                 </div>
-                <div class="test-mode-option">
-                    <label class="checkbox-label">
+                <div class="login-footer">
+                    <label class="test-mode-label">
                         <input type="checkbox" id="testMode" onchange="toggleTestMode()">
                         <span class="checkmark"></span>
-                        <span class="label-text">测试模式（允许多用户同时登录）</span>
+                        测试模式（允许多用户同时登录）
                     </label>
+                </div>
+                
+                <!-- 添加测试按钮 -->
+                <div class="login-footer" style="margin-top: 10px;">
+                    <button type="button" onclick="testImageUpload()" style="background: #ff4444; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;">
+                        🧪 测试图片上传函数
+                    </button>
                 </div>
                 <button id="loginBtn" onclick="login()">
                     <i class="fas fa-sign-in-alt"></i>
@@ -326,6 +333,6 @@
     <label for="input_message" style="display:none;">消息</label>
     <textarea id="input_message" autocomplete="off" ...></textarea>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=2"></script>
 </body>
 </html>

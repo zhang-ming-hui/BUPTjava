@@ -387,4 +387,144 @@ public class GroupManager {
         }
         return members;
     }
+
+    /**
+     * 退出小组
+     * @param subgroupName 小组名称
+     * @param username 用户名
+     * @return 是否成功退出
+     */
+    public boolean leaveSubgroup(String subgroupName, String username) {
+        try (Connection conn = DBConnection.getConnection()) {
+            // 检查用户是否是小组创建者
+            String creator = getSubgroupCreator(subgroupName);
+            if (creator != null && creator.equalsIgnoreCase(username)) {
+                System.out.println("小组创建者不能退出小组: " + username + " -> " + subgroupName);
+                return false;
+            }
+
+            // 获取小组ID和用户ID
+            int subgroupId = -1;
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "SELECT subgroup_id FROM subgroups WHERE subgroup_name = ?")) {
+                stmt.setString(1, subgroupName);
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    subgroupId = rs.getInt("subgroup_id");
+                }
+            }
+
+            int userId = DBConnection.getUserId(username);
+            if (subgroupId == -1 || userId == -1) return false;
+
+            // 从小组成员表中删除
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "DELETE FROM subgroup_members WHERE subgroup_id = ? AND user_id = ?")) {
+                stmt.setInt(1, subgroupId);
+                stmt.setInt(2, userId);
+                int affectedRows = stmt.executeUpdate();
+
+                if (affectedRows > 0) {
+                    updateSubgroupMemberCount(subgroupId);
+                    System.out.println("用户 " + username + " 成功退出小组 " + subgroupName);
+                    return true;
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("退出小组时出错: " + e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * 删除小组（仅创建者可以删除）
+     * @param subgroupName 小组名称
+     * @param username 用户名
+     * @return 是否成功删除
+     */
+    public boolean deleteSubgroup(String subgroupName, String username) {
+        try (Connection conn = DBConnection.getConnection()) {
+            // 检查用户是否是小组创建者
+            String creator = getSubgroupCreator(subgroupName);
+            if (creator == null || !creator.equalsIgnoreCase(username)) {
+                System.out.println("只有小组创建者可以删除小组: " + username + " -> " + subgroupName);
+                System.out.println("[调试] 创建者: '" + creator + "', 当前用户: '" + username + "'");
+                return false;
+            }
+
+            // 获取小组ID
+            int subgroupId = -1;
+            try (PreparedStatement stmt = conn.prepareStatement(
+                    "SELECT subgroup_id FROM subgroups WHERE subgroup_name = ?")) {
+                stmt.setString(1, subgroupName);
+                ResultSet rs = stmt.executeQuery();
+                if (rs.next()) {
+                    subgroupId = rs.getInt("subgroup_id");
+                }
+            }
+
+            if (subgroupId == -1) return false;
+
+            // 开始事务
+            conn.setAutoCommit(false);
+            try {
+                // 1. 删除小组成员
+                try (PreparedStatement stmt = conn.prepareStatement(
+                        "DELETE FROM subgroup_members WHERE subgroup_id = ?")) {
+                    stmt.setInt(1, subgroupId);
+                    stmt.executeUpdate();
+                }
+
+                // 2. 删除小组聊天消息（如果有的话）
+                try (PreparedStatement stmt = conn.prepareStatement(
+                        "DELETE FROM messages WHERE receiver_id = ? AND chat_type = 'subgroup'")) {
+                    stmt.setInt(1, subgroupId);
+                    stmt.executeUpdate();
+                }
+
+                // 3. 删除小组
+                try (PreparedStatement stmt = conn.prepareStatement(
+                        "DELETE FROM subgroups WHERE subgroup_id = ?")) {
+                    stmt.setInt(1, subgroupId);
+                    int affectedRows = stmt.executeUpdate();
+                    
+                    if (affectedRows > 0) {
+                        conn.commit();
+                        System.out.println("小组 " + subgroupName + " 已被创建者 " + username + " 删除");
+                        return true;
+                    }
+                }
+                
+                conn.rollback();
+            } catch (SQLException e) {
+                conn.rollback();
+                throw e;
+            } finally {
+                conn.setAutoCommit(true);
+            }
+        } catch (SQLException e) {
+            System.err.println("删除小组时出错: " + e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * 获取小组创建者
+     * @param subgroupName 小组名称
+     * @return 创建者用户名，如果不存在返回null
+     */
+    public String getSubgroupCreator(String subgroupName) {
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(
+                     "SELECT u.username FROM users u JOIN subgroups s ON u.user_id = s.creator_id WHERE s.subgroup_name = ?")) {
+            stmt.setString(1, subgroupName);
+            ResultSet rs = stmt.executeQuery();
+            if (rs.next()) {
+                return rs.getString("username");
+            }
+        } catch (SQLException e) {
+            System.err.println("获取小组创建者时出错: " + e.getMessage());
+        }
+        return null;
+    }
 }

@@ -18,7 +18,7 @@ public class DBConnection {
     // 获取用户ID
     public static int getUserId(String username) throws SQLException {
         try (Connection conn = getConnection();
-             PreparedStatement stmt = conn.prepareStatement("SELECT user_id FROM users WHERE username = ?")) {
+             PreparedStatement stmt = conn.prepareStatement("SELECT user_id FROM users WHERE LOWER(username) = LOWER(?)")) {
             stmt.setString(1, username);
             ResultSet rs = stmt.executeQuery();
             return rs.next() ? rs.getInt("user_id") : -1;

@@ -1257,3 +1257,52 @@ body {
     font-weight: bold;
     margin-right: 8px;
 }
+
+/* 小组操作按钮样式 */
+.subgroup-actions {
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    margin-left: auto;
+}
+
+.list-item:hover .subgroup-actions {
+    opacity: 1;
+}
+
+.action-btn {
+    padding: 4px 6px !important;
+    font-size: 12px !important;
+    min-width: auto !important;
+    background: transparent !important;
+    border: 1px solid #dee2e6 !important;
+    color: #6c757d !important;
+    transition: all 0.2s ease !important;
+    border-radius: 4px !important;
+}
+
+.action-btn:hover {
+    background: #f8f9fa !important;
+    color: #495057 !important;
+    transform: scale(1.05);
+    border-color: #adb5bd !important;
+}
+
+.action-btn.delete-btn:hover {
+    background: #dc3545 !important;
+    color: white !important;
+    border-color: #dc3545 !important;
+}
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+    .subgroup-actions {
+        opacity: 1;
+    }
+    
+    .action-btn {
+        font-size: 10px !important;
+        padding: 3px 5px !important;
+    }
+}
