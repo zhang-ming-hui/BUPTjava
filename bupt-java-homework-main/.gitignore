@@ -4,3 +4,42 @@
 application-local.properties
 *.properties.local
 config.properties
+
+# IntelliJ IDEA - Keep project files, ignore personal settings
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/shelf/
+.idea/httpRequests/
+.idea/dataSources/
+.idea/dataSources.local.xml
+.idea/dataSources.ids
+.idea/sqlDataSources.xml
+.idea/dynamic.xml
+.idea/uiDesigner.xml
+.idea/dbnavigator.xml
+
+# Keep these IntelliJ IDEA files for project sharing:
+# .idea/misc.xml (project settings)
+# .idea/modules.xml (module configuration)
+# .idea/vcs.xml (VCS configuration)
+# .idea/*.iml (module files)
+
+# IntelliJ IDEA output
+out/
+*.iws
+
+# VS Code
+.vscode/
+
+# Eclipse
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
