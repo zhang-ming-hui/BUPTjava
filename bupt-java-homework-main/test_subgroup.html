@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小组功能测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .test-result { margin: 10px 0; padding: 10px; background: #f9f9f9; }
+        button { margin: 5px; padding: 10px 15px; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>小组功能测试页面</h1>
+    
+    <div class="test-section">
+        <h2>测试步骤说明</h2>
+        <ol>
+            <li>在主页面中，用user1创建群组"测试群"</li>
+            <li>用user1邀请user2加入群组</li>
+            <li>用user2接受邀请并加入群组</li>
+            <li>用user1在群组中创建小组"测试小组"，邀请user2</li>
+            <li>检查user2是否收到小组邀请</li>
+            <li>user2接受小组邀请</li>
+            <li>检查两个用户是否都能看到小组列表</li>
+            <li>在小组聊天中测试邀请功能</li>
+        </ol>
+    </div>
+    
+    <div class="test-section">
+        <h2>问题排查</h2>
+        <div class="test-result">
+            <p><strong>问题1：小组列表不更新</strong></p>
+            <p class="info">修复方案：将broadcastSubgroupList()改为broadcastSubgroupListToAll()，确保所有相关用户都收到更新</p>
+        </div>
+        
+        <div class="test-result">
+            <p><strong>问题2：小组邀请不显示</strong></p>
+            <p class="info">排查：检查前端是否正确处理SUBGROUP_INVITE消息，以及confirm对话框是否被浏览器阻止</p>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>修复内容总结</h2>
+        <ul>
+            <li>✅ 修复了小组列表广播问题 - 现在所有用户都能看到新创建的小组</li>
+            <li>✅ 添加了详细的调试日志 - 便于追踪邀请发送情况</li>
+            <li>✅ 优化了小组邀请逻辑 - 添加了权限检查和用户状态验证</li>
+            <li>✅ 实现了小组内邀请功能 - 小组成员可以邀请其他群组用户</li>
+            <li>✅ 修复了历史消息加载问题 - 打开聊天时自动加载历史消息</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>使用说明</h2>
+        <p>1. 访问主页面：<a href="http://localhost:3001/index.html" target="_blank">http://localhost:3001/index.html</a></p>
+        <p>2. 勾选"测试模式"，在多个标签页登录不同用户</p>
+        <p>3. 按照测试步骤进行测试</p>
+        <p>4. 查看控制台日志获取详细调试信息</p>
+    </div>
+    
+    <script>
+        console.log('小组功能测试页面已加载');
+        console.log('请在浏览器中打开主页面进行测试：http://localhost:3001/index.html');
+    </script>
+</body>
+</html> 

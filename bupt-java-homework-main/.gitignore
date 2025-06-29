@@ -1,0 +1,6 @@
+/target/
+
+# Sensitive configuration files
+application-local.properties
+*.properties.local
+config.properties

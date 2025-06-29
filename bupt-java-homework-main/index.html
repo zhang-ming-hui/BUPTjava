@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能聊天室</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <!-- 登录界面 -->
+    <div id="loginScreen" class="login-screen">
+        <div class="login-container">
+            <div class="login-header">
+                <i class="fas fa-comments"></i>
+                <h1>智能聊天室</h1>
+                <p>连接世界，分享想法</p>
+            </div>
+            <div class="login-form">
+                <div class="input-group">
+                    <i class="fas fa-user"></i>
+                    <input type="text" id="username" placeholder="用户名" required>
+                </div>
+                <div class="input-group">
+                    <i class="fas fa-lock"></i>
+                    <input type="password" id="password" placeholder="密码" required>
+                </div>
+                <div class="test-mode-option">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="testMode" onchange="toggleTestMode()">
+                        <span class="checkmark"></span>
+                        <span class="label-text">测试模式（允许多用户同时登录）</span>
+                    </label>
+                </div>
+                <button id="loginBtn" onclick="login()">
+                    <i class="fas fa-sign-in-alt"></i>
+                    登录
+                </button>
+                <div id="loginStatus" class="login-status"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 主聊天界面 -->
+    <div id="mainApp" class="main-app hidden">
+        <!-- 顶部导航栏 -->
+        <header class="app-header">
+            <div class="header-left">
+                <h2><i class="fas fa-comments"></i> 智能聊天室</h2>
+                <span class="user-info">
+                    <i class="fas fa-user-circle"></i>
+                    <span id="currentUser"></span>
+                </span>
+            </div>
+            <div class="header-right">
+                <button class="btn-icon" onclick="showDebugInfo()" title="调试信息">
+                    <i class="fas fa-bug"></i>
+                </button>
+                <button class="btn-icon" onclick="showSettings()" title="设置">
+                    <i class="fas fa-cog"></i>
+                </button>
+                <button class="btn-icon" onclick="logout()" title="退出">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- 主要内容区域 -->
+        <div class="main-content">
+            <!-- 左侧边栏 -->
+            <aside class="sidebar">
+                <!-- 标签页切换 -->
+                <div class="sidebar-tabs">
+                    <button class="tab-btn active" data-tab="users">
+                        <i class="fas fa-users"></i>
+                        用户列表
+                    </button>
+                    <button class="tab-btn" data-tab="groups">
+                        <i class="fas fa-layer-group"></i>
+                        群组列表
+                    </button>
+                    <button class="tab-btn" data-tab="subgroups">
+                        <i class="fas fa-users-cog"></i>
+                        小组列表
+                    </button>
+                </div>
+
+                <!-- 用户列表 -->
+                <div id="usersTab" class="tab-content active">
+                    <div class="tab-header">
+                        <h3>在线用户</h3>
+                        <span id="onlineCount" class="count-badge">0</span>
+                    </div>
+                    <div id="usersList" class="list-container">
+                        <!-- 用户列表将在这里动态生成 -->
+                    </div>
+                </div>
+
+                <!-- 群组列表 -->
+                <div id="groupsTab" class="tab-content">
+                    <div class="tab-header">
+                        <h3>群组</h3>
+                        <button class="btn-small" onclick="showCreateGroupModal()" title="创建群组">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <button class="btn-small" onclick="showInviteUserModal()" title="邀请用户">
+                            <i class="fas fa-user-plus"></i>
+                        </button>
+                    </div>
+                    <div id="groupsList" class="list-container">
+                        <!-- 群组列表将在这里动态生成 -->
+                    </div>
+                </div>
+
+                <!-- 小组列表 -->
+                <div id="subgroupsTab" class="tab-content">
+                    <div class="tab-header">
+                        <h3>小组</h3>
+                        <button class="btn-small" onclick="showCreateSubgroupModal()">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                    <div id="subgroupsList" class="list-container">
+                        <!-- 小组列表将在这里动态生成 -->
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 聊天区域 -->
+            <main class="chat-area">
+                <!-- 聊天窗口容器 -->
+                <div id="chatContainer" class="chat-container">
+                    <div id="welcomeScreen" class="welcome-screen">
+                        <i class="fas fa-comments"></i>
+                        <h2>欢迎使用智能聊天室</h2>
+                        <p>选择左侧的用户、群组或小组开始聊天</p>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- 模态框 -->
+    
+    <!-- 创建群组模态框 -->
+    <div id="createGroupModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>创建群组</h3>
+                <button class="close-btn" onclick="closeModal('createGroupModal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label>群组名称</label>
+                    <input type="text" id="groupName" placeholder="输入群组名称">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeModal('createGroupModal')">取消</button>
+                <button class="btn-primary" onclick="createGroup()">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 创建小组模态框 -->
+    <div id="createSubgroupModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>创建小组</h3>
+                <button class="close-btn" onclick="closeModal('createSubgroupModal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label>选择群组</label>
+                    <select id="parentGroup">
+                        <option value="">请选择群组</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>小组名称</label>
+                    <input type="text" id="subgroupName" placeholder="输入小组名称">
+                </div>
+                <div class="input-group">
+                    <label>邀请成员</label>
+                    <div id="memberSelection" class="member-selection">
+                        <!-- 成员选择将在这里动态生成 -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeModal('createSubgroupModal')">取消</button>
+                <button class="btn-primary" onclick="createSubgroup()">创建</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 邀请用户加入群组模态框 -->
+    <div id="inviteUserModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>邀请用户加入群组</h3>
+                <button class="close-btn" onclick="closeModal('inviteUserModal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label>选择群组</label>
+                    <select id="inviteTargetGroup">
+                        <option value="">请选择群组</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>选择要邀请的用户</label>
+                    <div id="inviteUserSelection" class="user-selection">
+                        <!-- 用户选择将在这里动态生成 -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeModal('inviteUserModal')">取消</button>
+                <button class="btn-primary" onclick="sendGroupInvites()">发送邀请</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 邀请用户加入小组模态框 -->
+    <div id="inviteToSubgroupModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>邀请用户加入小组</h3>
+                <button class="close-btn" onclick="closeModal('inviteToSubgroupModal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <label>小组名称</label>
+                    <input type="text" id="inviteSubgroupName" readonly>
+                </div>
+                <div class="input-group">
+                    <label>选择用户（只能邀请同群组且未加入其他小组的用户）</label>
+                    <div id="inviteSubgroupUserSelection" class="user-selection">
+                        <!-- 用户选择将在这里动态生成 -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeModal('inviteToSubgroupModal')">取消</button>
+                <button class="btn-primary" onclick="sendSubgroupInvites()">发送邀请</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 文件上传模态框 -->
+    <div id="fileUploadModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>发送文件</h3>
+                <button class="close-btn" onclick="closeModal('fileUploadModal')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="file-upload-area">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <p>拖拽文件到此处或点击选择文件</p>
+                    <input type="file" id="fileInput" multiple>
+                    <button class="btn-secondary" onclick="document.getElementById('fileInput').click()">
+                        选择文件
+                    </button>
+                </div>
+                <div id="fileList" class="file-list">
+                    <!-- 文件列表将在这里显示 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeModal('fileUploadModal')">取消</button>
+                <button class="btn-primary" onclick="uploadFiles()">发送</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 小组邀请确认模态框 -->
+    <div id="subgroupInviteConfirmModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>小组邀请</h3>
+                <button class="close-btn" onclick="closeSubgroupInviteModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="invite-info">
+                    <i class="fas fa-users fa-2x"></i>
+                    <p id="subgroupInviteMessage">您收到了小组邀请</p>
+                    <div class="invite-details">
+                        <p><strong>邀请者：</strong><span id="inviterName"></span></p>
+                        <p><strong>群组：</strong><span id="parentGroupName"></span></p>
+                        <p><strong>小组：</strong><span id="subgroupNameSpan"></span></p>
+                    </div>
+                    <div class="invite-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <p>注意：您只能加入一个小组，接受后将无法加入其他小组。</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="declineSubgroupInvite()">拒绝</button>
+                <button class="btn-primary" onclick="acceptSubgroupInvite()">接受</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 通知区域 -->
+    <div id="notificationArea" class="notification-area"></div>
+
+    <!-- 隐藏的文件输入 -->
+    <input type="file" id="imageInput" accept="image/*" style="display: none" aria-label="上传图片" autocomplete="off">
+
+    <!-- 聊天输入框加隐藏 label 并设置 autocomplete -->
+    <label for="input_message" style="display:none;">消息</label>
+    <textarea id="input_message" autocomplete="off" ...></textarea>
+
+    <script src="script.js"></script>
+</body>
+</html>
