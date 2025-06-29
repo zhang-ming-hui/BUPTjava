@@ -198,7 +198,7 @@ function handleServerMessage(message) {
             handleSubgroupMessage(parts[1], parts[2], parts[3], parts[4]);
             break;
         case 'PRIVATE_MESSAGE':
-            handlePrivateMessage(parts[1], parts[2], parts[3], parts[4]);
+            handlePrivateMessage(parts[1], parts[2], parts[3]);
             break;
         case 'FILE_MESSAGE':
             handleFileMessage(parts[1], parts[2], parts[3], parts[4], parts[5]);
@@ -605,7 +605,9 @@ function handleGroupMessage(groupName, sender, content, timestamp) {
         console.log('创建新的群组聊天窗口:', target);
         const chatWindow = createChatWindow(target);
         activeChats.set(target, chatWindow);
-        // 不立即显示，只创建
+        // 添加到DOM中但不显示
+        chatWindow.style.display = 'none';
+        document.getElementById('chatContainer').appendChild(chatWindow);
     }
     
     addMessageToChat(target, sender, content, 'received', timestamp);
@@ -623,7 +625,9 @@ function handleSubgroupMessage(subgroupName, sender, content, timestamp) {
     if (!activeChats.has(target)) {
         const chatWindow = createChatWindow(target);
         activeChats.set(target, chatWindow);
-        // 不立即显示，只创建
+        // 添加到DOM中但不显示
+        chatWindow.style.display = 'none';
+        document.getElementById('chatContainer').appendChild(chatWindow);
     }
     
     addMessageToChat(target, sender, content, 'received', timestamp);
@@ -635,16 +639,26 @@ function handleSubgroupMessage(subgroupName, sender, content, timestamp) {
 
 // 处理私聊消息
 function handlePrivateMessage(sender, content, timestamp) {
+    console.log('[handlePrivateMessage] 收到私聊消息:', { sender, content, timestamp });
     const target = `USER_${sender}`;
     
     // 确保聊天窗口存在
     if (!activeChats.has(target)) {
+        console.log('[handlePrivateMessage] 创建新的聊天窗口:', target);
         const chatWindow = createChatWindow(target);
         activeChats.set(target, chatWindow);
-        // 不立即显示，只创建
+        // 添加到DOM中但不显示
+        chatWindow.style.display = 'none';
+        document.getElementById('chatContainer').appendChild(chatWindow);
+        
+        // 使用setTimeout确保DOM元素已经添加完成
+        setTimeout(() => {
+            addMessageToChat(target, sender, content, 'received', timestamp);
+        }, 0);
+    } else {
+        // 如果聊天窗口已存在，直接添加消息
+        addMessageToChat(target, sender, content, 'received', timestamp);
     }
-    
-    addMessageToChat(target, sender, content, 'received', timestamp);
     
     if (currentChat !== target) {
         incrementUnreadCount(target);
@@ -669,7 +683,9 @@ function handleFileMessage(target, sender, fileName, fileSize, timestamp) {
     if (!activeChats.has(chatTarget)) {
         const chatWindow = createChatWindow(chatTarget);
         activeChats.set(chatTarget, chatWindow);
-        // 不立即显示，只创建
+        // 添加到DOM中但不显示
+        chatWindow.style.display = 'none';
+        document.getElementById('chatContainer').appendChild(chatWindow);
     }
     
     addFileMessageToChat(chatTarget, sender, fileName, fileSize, 'received', timestamp);
@@ -685,6 +701,9 @@ function handleImageMessage(target, sender, fileUrl, imageSize, timestamp) {
     if (!activeChats.has(target)) {
         const chatWindow = createChatWindow(target);
         activeChats.set(target, chatWindow);
+        // 添加到DOM中但不显示
+        chatWindow.style.display = 'none';
+        document.getElementById('chatContainer').appendChild(chatWindow);
     }
     addImageMessageToChat(target, sender, fileUrl, imageSize, sender === currentUser ? 'sent' : 'received', timestamp);
     if (currentChat !== target) {
@@ -763,6 +782,8 @@ function addImageMessageToChat(target, sender, fileUrl, imageSize, type, timesta
 }
 
 function addMessageToChat(target, sender, content, type, timestamp) {
+    console.log('[addMessageToChat] 添加消息:', { target, sender, content, type, timestamp });
+    
     // 写入缓存
     if (!chatMessages.has(target)) chatMessages.set(target, []);
     chatMessages.get(target).push({
@@ -771,8 +792,15 @@ function addMessageToChat(target, sender, content, type, timestamp) {
         type,
         timestamp: timestamp || Date.now()
     });
+    
     const messagesContainer = document.getElementById(`messages_${target}`);
-    if (!messagesContainer) return;
+    console.log('[addMessageToChat] 寻找容器:', `messages_${target}`, '找到:', !!messagesContainer);
+    
+    if (!messagesContainer) {
+        console.warn('[addMessageToChat] 消息容器不存在，消息已保存到缓存:', target);
+        return;
+    }
+    
     const time = timestamp ? new Date(parseInt(timestamp)).toLocaleTimeString() : new Date().toLocaleTimeString();
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${type}`;
@@ -785,6 +813,7 @@ function addMessageToChat(target, sender, content, type, timestamp) {
     `;
     messagesContainer.appendChild(messageDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    console.log('[addMessageToChat] 消息已添加到DOM');
 }
 
 // 增加未读消息计数
