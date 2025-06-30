@@ -932,7 +932,7 @@ public class ChatServer {
         // 根据用户名获取客户端
         private ClientHandler getClientByUsername(String username) {
             for (ClientHandler client : onlineClients.values()) {
-                if (client.currentUser != null && client.currentUser.getUsername().equals(username)) {
+                if (client.currentUser != null && client.currentUser.getUsername().equalsIgnoreCase(username)) {
                     return client;
                 }
             }
